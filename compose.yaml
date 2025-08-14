@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      POSTGRES_DB: bibi
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: toor
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - /mnt/c/Users/bouch/IdeaProjects/bibi_project/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - app-network
+
+  postgrest:
+    image: postgrest/postgrest:latest
+    container_name: postgrest_api
+    restart: always
+    environment:
+      PGRST_DB_URI: postgres://root:toor@postgres:5432/bibi
+      PGRST_OPENAPI_SERVER_PROXY_URI: http://localhost/api
+      PGRST_DB_SCHEMA: bibi
+      PGRST_DB_ANON_ROLE: web_anon
+    depends_on:
+      - postgres
+    networks:
+      - app-network
+
+  swagger-ui:
+    image: swaggerapi/swagger-ui:latest
+    container_name: swagger_ui
+    restart: always
+    environment:
+      SWAGGER_JSON_URL: http://localhost/api-public/
+      BASE_URL: /swagger/
+      SUPPORTED_SUBMIT_METHODS: '["get", "post", "put", "delete", "patch"]'
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgrest
+    networks:
+      - app-network
+
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: opa_server
+    restart: always
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "/policies"
+    volumes:
+      - /mnt/c/Users/bouch/IdeaProjects/bibi_project/opa-policies:/policies:ro
+    ports:
+      - "8181:8181"
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx_proxy
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      - /mnt/c/Users/bouch/IdeaProjects/bibi_project/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - postgrest
+      - opa
+      - swagger-ui
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
+    driver: bridge
